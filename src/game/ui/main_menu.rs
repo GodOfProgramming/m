@@ -177,7 +177,7 @@ pub fn on_update(
     match interaction {
       Interaction::Pressed => match button.kind() {
         MainMenuButtonType::Play => {
-          next_state.set(GameState::PregameMenu);
+          next_state.set(GameState::CharacterSelect);
         }
         MainMenuButtonType::Settings => {
           next_state.set(GameState::SettingsMenu);

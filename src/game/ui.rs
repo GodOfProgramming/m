@@ -1,3 +1,4 @@
+pub mod character_selection;
 pub mod main_menu;
 pub mod settings_menu;
 pub mod ui_playground;
@@ -39,3 +40,11 @@ impl WindowEvent {
 pub struct FocusedEntity {
   pub handle: Option<Entity>,
 }
+
+// main game ui
+
+pub fn on_enter() {}
+
+pub fn on_update() {}
+
+pub fn on_exit() {}

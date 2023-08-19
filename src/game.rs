@@ -1,19 +1,29 @@
 pub mod ui;
 
-use bevy::{app::AppExit, ecs::world::EntityMut, prelude::*};
+use bevy::{
+  app::AppExit,
+  prelude::*,
+  tasks::{AsyncComputeTaskPool, Task},
+};
+use futures_lite::future;
+use serde::Deserialize;
 
-use crate::storage::SystemInformation;
+use crate::{
+  fatal_error,
+  storage::{saves::SaveData, SystemInformation},
+};
 
-use self::ui::FocusedEntity;
+use ui::FocusedEntity;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
 pub enum GameState {
   #[default]
   Startup,
+  StartGame,
   MainMenu,
-  PregameMenu,
+  CharacterSelect,
+  CharacterCreate,
   SettingsMenu,
-  Loading,
   Gameplay,
 
   // debug
@@ -56,3 +66,72 @@ pub fn global_input_handler(
     }
   }
 }
+
+#[derive(Component)]
+pub struct LoadPlayer {
+  task: Task<SaveData>,
+}
+
+#[derive(Event)]
+pub struct StartGameEvent {
+  name: String,
+}
+
+impl StartGameEvent {
+  pub fn handle(
+    mut commands: Commands,
+    mut event: EventReader<StartGameEvent>,
+    sys_info: Res<SystemInformation>,
+    mut next_state: ResMut<NextState<GameState>>,
+  ) {
+    let thread_pool = AsyncComputeTaskPool::get();
+    if let Some(event) = event.into_iter().next() {
+      let file_path = sys_info.game_saves_path.join(format!("{}.ms", event.name));
+      if file_path.exists() {
+        // load existing save
+        let task = thread_pool.spawn(async move {
+          if let Ok(save_data) = std::fs::read(file_path) {
+            if let Ok(player_data) = bincode::deserialize::<SaveData>(&save_data) {
+              player_data
+            } else {
+              fatal_error("player save data is corrupt");
+            }
+          } else {
+            fatal_error("could not read save data file");
+          }
+        });
+        commands.spawn(LoadPlayer { task });
+      } else {
+        // create new character
+        commands.spawn((PlayerCharacter, Name(event.name.clone())));
+        next_state.set(GameState::Gameplay);
+      }
+    } else {
+      fatal_error("began game with no character")
+    }
+  }
+}
+
+pub fn save_data_receiver(mut query: Query<&mut LoadPlayer>) -> SaveData {
+  let mut load_player = query.single_mut();
+  if let Some(save_data) = future::block_on(future::poll_once(&mut load_player.task)) {
+    save_data
+  } else {
+    fatal_error("save data load order of operations error");
+  }
+}
+
+pub fn spawn_player(
+  In(save_data): In<SaveData>,
+  mut commands: Commands,
+  mut next_state: ResMut<NextState<GameState>>,
+) {
+  commands.spawn((PlayerCharacter, Name(save_data.name)));
+  next_state.set(GameState::Gameplay);
+}
+
+#[derive(Component)]
+pub struct PlayerCharacter;
+
+#[derive(Component)]
+pub struct Name(String);

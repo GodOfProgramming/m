@@ -7,6 +7,7 @@ use bevy::{
   window::WindowResolution,
 };
 use bevy_egui::EguiPlugin;
+use dialog::DialogBox;
 use game::{
   ui::{
     main_menu,
@@ -19,6 +20,8 @@ use platform_dirs::AppDirs;
 use std::error::Error;
 use storage::{Settings, SystemInformation};
 
+use crate::game::{ui::character_selection, StartGameEvent};
+
 const GAME_NAME: &'static str = "M";
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -26,6 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .map(|d| d.data_dir)
     .ok_or("unable to acquire data directory, cannot save anything")?;
 
+  let game_saves_path = game_dir.join("saves");
   let settings_path = game_dir.join("settings.toml");
 
   println!(
@@ -34,8 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   );
 
   let settings = Settings::load_or_default(&settings_path);
-
-  let sys_info = SystemInformation::new(settings_path, settings);
+  let sys_info = SystemInformation::new(game_saves_path, settings_path, settings);
 
   App::new()
     .add_plugins((
@@ -78,6 +81,27 @@ fn main() -> Result<(), Box<dyn Error>> {
       main_menu::on_update.run_if(in_state(GameState::MainMenu)),
     )
     .add_systems(OnExit(GameState::MainMenu), main_menu::on_exit)
+    // character select
+    .add_systems(
+      OnEnter(GameState::CharacterSelect),
+      character_selection::on_enter,
+    )
+    .add_systems(
+      Update,
+      character_selection::on_update.run_if(in_state(GameState::CharacterSelect)),
+    )
+    .add_systems(
+      OnExit(GameState::CharacterSelect),
+      character_selection::on_exit,
+    )
+    // begin game
+    .add_systems(OnEnter(GameState::StartGame), StartGameEvent::handle)
+    .add_systems(
+      Update,
+      game::save_data_receiver
+        .pipe(game::spawn_player)
+        .run_if(in_state(GameState::StartGame)),
+    )
     // settings
     .add_systems(OnEnter(GameState::SettingsMenu), settings_menu::on_enter)
     .add_systems(
@@ -90,6 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .run_if(in_state(GameState::SettingsMenu)),
     )
     .add_systems(OnExit(GameState::SettingsMenu), settings_menu::on_exit)
+    // debug
     .add_systems(OnEnter(GameState::UiPlayground), ui_playground::on_enter)
     .add_systems(
       Update,
@@ -100,4 +125,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     .run();
 
   Ok(())
+}
+
+pub fn fatal_error(msg: &str) -> ! {
+  error!("{}", msg);
+  dialog::Message::new(msg)
+    .title("Fatal Error")
+    .show()
+    .expect("failed to show dialog box");
+  panic!("{}", msg);
 }

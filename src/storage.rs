@@ -1,5 +1,5 @@
-mod saves;
-mod settings;
+pub mod saves;
+pub mod settings;
 
 use anyhow::Result;
 use bevy::prelude::*;
@@ -9,13 +9,15 @@ pub use settings::prelude::*;
 
 #[derive(Resource)]
 pub struct SystemInformation {
+  pub game_saves_path: PathBuf,
   pub settings_path: PathBuf,
   pub settings: Settings,
 }
 
 impl SystemInformation {
-  pub fn new(settings_path: PathBuf, settings: Settings) -> Self {
+  pub fn new(game_saves_path: PathBuf, settings_path: PathBuf, settings: Settings) -> Self {
     Self {
+      game_saves_path,
       settings_path,
       settings,
     }
