@@ -1,9 +1,6 @@
-use bevy::{
-  ecs::{entity::EntityMap, world::EntityMut},
-  prelude::*,
-};
+use bevy::prelude::*;
 
-use crate::storage::{Focus, SystemInformation};
+use super::FocusedEntity;
 
 #[derive(Resource)]
 pub struct UiPlayground {
@@ -55,7 +52,7 @@ pub fn on_enter(mut commands: Commands) {
 
 pub fn on_update(
   playground: Res<UiPlayground>,
-  mut sys_info: ResMut<SystemInformation>,
+  mut focus: ResMut<FocusedEntity>,
   interaction_query: Query<
     (&Interaction, &UiPlaygroundButton),
     (Changed<Interaction>, With<Button>),
@@ -64,19 +61,7 @@ pub fn on_update(
   for (interaction, _button) in interaction_query.into_iter() {
     match interaction {
       Interaction::Pressed => {
-        debug!("clicked button");
-        sys_info.focused_entity = Some(Focus {
-          handle: playground.handle,
-          on_chars_received: |handle: Entity, c: char, entities: &mut Query<&mut Text>| {
-            if let Ok(mut text) = entities.get_component_mut::<Text>(handle) {
-              let curr = &text.sections[0].value;
-              debug!("curr text = {}", curr);
-              text.sections[0].value = format!("{}{}", curr, c);
-            } else {
-              debug!("entity is not text");
-            }
-          },
-        });
+        focus.handle = Some(playground.handle);
       }
       _ => (),
     }
@@ -86,4 +71,5 @@ pub fn on_update(
 pub fn on_exit(mut commands: Commands, playground: Res<UiPlayground>) {
   commands.entity(playground.handle).despawn();
   commands.remove_resource::<UiPlayground>();
+  commands.insert_resource::<FocusedEntity>(FocusedEntity::default());
 }

@@ -34,3 +34,8 @@ impl WindowEvent {
     }
   }
 }
+
+#[derive(Default, Resource)]
+pub struct FocusedEntity {
+  pub handle: Option<Entity>,
+}

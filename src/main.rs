@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .add_event::<WindowEvent>()
     .add_event::<SaveSettingsEvent>()
     // global
-    .add_systems(OnEnter(GameState::Startup), game::on_enter)
+    .add_systems(Startup, game::startup)
     .add_systems(Update, game::global_input_handler)
     // main menu
     .add_systems(OnEnter(GameState::MainMenu), main_menu::on_enter)

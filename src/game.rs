@@ -4,6 +4,8 @@ use bevy::{app::AppExit, ecs::world::EntityMut, prelude::*};
 
 use crate::storage::SystemInformation;
 
+use self::ui::FocusedEntity;
+
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
 pub enum GameState {
   #[default]
@@ -18,8 +20,9 @@ pub enum GameState {
   UiPlayground,
 }
 
-pub fn on_enter(mut commands: Commands, mut next_state: ResMut<NextState<GameState>>) {
+pub fn startup(mut commands: Commands, mut next_state: ResMut<NextState<GameState>>) {
   commands.spawn(Camera2dBundle::default());
+  commands.insert_resource(FocusedEntity::default());
   next_state.set(GameState::MainMenu);
 }
 
@@ -28,7 +31,7 @@ pub fn global_input_handler(
   mouse: Res<Input<MouseButton>>,
   mut chars: EventReader<ReceivedCharacter>,
   mut exit: EventWriter<AppExit>,
-  sys_info: Res<SystemInformation>,
+  focus: Res<FocusedEntity>,
   mut next_state: ResMut<NextState<GameState>>,
   mut entities: Query<&mut Text>,
 ) {
@@ -40,10 +43,16 @@ pub fn global_input_handler(
     exit.send(AppExit);
   }
 
-  if let Some(focus) = &sys_info.focused_entity {
-    for c in chars.into_iter() {
-      debug!("got {}", c.char);
-      (focus.on_chars_received)(focus.handle, c.char, &mut entities);
+  if let Some(handle) = focus.handle {
+    for c in chars.into_iter().map(|c| c.char) {
+      if let Ok(mut text) = entities.get_component_mut::<Text>(handle) {
+        if c == '\x08' {
+          text.sections[0].value.pop();
+        } else {
+          let curr = &text.sections[0].value;
+          text.sections[0].value = format!("{}{}", curr, c);
+        }
+      }
     }
   }
 }
