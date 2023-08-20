@@ -15,6 +15,9 @@ use crate::{
   },
 };
 
+const PLAYER_SIZE: f32 = 100.0;
+const DEADZONE: f32 = 0.15;
+
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
 pub enum GameState {
   #[default]
@@ -112,7 +115,6 @@ impl SaveDataLoadedEvent {
   ) {
     for event in event_reader.iter() {
       let save_data = event.data();
-      const PLAYER_SIZE: f32 = 100.0;
       if let Some(entity) = sys_info.current_camera {
         commands.entity(entity).despawn();
       }
@@ -201,6 +203,8 @@ impl From<SavedAttributes> for Attributes {
 
 pub fn player_movement_system(
   keyboard_input: Res<Input<KeyCode>>,
+  gamepads: Res<Gamepads>,
+  gamepad_input: Res<Axis<GamepadAxis>>,
   time: Res<Time>,
   mut query: Query<(&mut Transform, &Attributes), With<PlayerCharacter>>,
 ) {
@@ -228,6 +232,29 @@ pub fn player_movement_system(
     moved = true;
   }
 
+  for gamepad in gamepads.iter() {
+    let (x, y) = (
+      gamepad_input
+        .get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickX))
+        .unwrap_or_default(),
+      gamepad_input
+        .get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickY))
+        .unwrap_or_default(),
+    );
+
+    if x.abs() > DEADZONE {
+      movement.x += x;
+      moved = true;
+    }
+
+    if y.abs() > DEADZONE {
+      movement.y += y;
+      moved = true
+    }
+
+    break;
+  }
+
   if moved {
     let movement = movement.normalize() * attributes.move_speed() * time.delta().as_millis() as f32;
     transform.translation += Vec3::new(movement.x, movement.y, 0.0);
@@ -237,6 +264,8 @@ pub fn player_movement_system(
 pub fn focus_camera_system(
   time: Res<Time>,
   mut scroll_wheel: EventReader<MouseWheel>,
+  gamepads: Res<Gamepads>,
+  gamepad_input: Res<Axis<GamepadAxis>>,
   mut query: ParamSet<(
     Query<&mut Transform, With<Camera3d>>,
     Query<(&Transform, &Attributes), With<PlayerCharacter>>,
@@ -263,14 +292,24 @@ pub fn focus_camera_system(
 
   const ZPOS_SCALAR: f32 = 10.0; // TODO arbitrary
 
-  let z_pos = cam_transform.translation.z
-    - (scroll_wheel
+  let gamepad_y = gamepads
+    .iter()
+    .next()
+    .map(|gp| gamepad_input.get(GamepadAxis::new(gp, GamepadAxisType::RightStickY)))
+    .flatten()
+    .map(|y| if y.abs() > DEADZONE { y } else { 0.0 })
+    .unwrap_or_default();
+
+  let z_pos = (cam_transform.translation.z
+    - ((scroll_wheel
       .iter()
       .map(|e| e.y)
       .reduce(|c, n| c + n)
       .unwrap_or_default()
+      + gamepad_y)
       * cam_transform.translation.distance(player_translate)
-      / ZPOS_SCALAR);
+      / ZPOS_SCALAR))
+    .clamp(PLAYER_SIZE * 3.0, PLAYER_SIZE * 15.0);
 
   let old_coords = Vec2::new(cam_transform.translation.x, cam_transform.translation.y);
 
