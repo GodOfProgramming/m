@@ -12,6 +12,7 @@ pub struct SystemInformation {
   pub game_saves_path: PathBuf,
   pub settings_path: PathBuf,
   pub settings: Settings,
+  pub current_camera: Option<Entity>,
 }
 
 impl SystemInformation {
@@ -20,6 +21,7 @@ impl SystemInformation {
       game_saves_path,
       settings_path,
       settings,
+      current_camera: None,
     }
   }
 

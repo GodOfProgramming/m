@@ -20,7 +20,10 @@ use platform_dirs::AppDirs;
 use std::error::Error;
 use storage::{Settings, SystemInformation};
 
-use crate::game::{ui::character_selection, StartGameEvent};
+use crate::game::{
+  ui::{character_creation, character_selection},
+  SaveDataLoadedEvent, StartGameEvent,
+};
 
 const GAME_NAME: &'static str = "M";
 
@@ -71,6 +74,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     .add_state::<GameState>()
     .add_event::<WindowEvent>()
     .add_event::<SaveSettingsEvent>()
+    .add_event::<StartGameEvent>()
+    .add_event::<SaveDataLoadedEvent>()
     // global
     .add_systems(Startup, game::startup)
     .add_systems(Update, game::global_input_handler)
@@ -94,13 +99,31 @@ fn main() -> Result<(), Box<dyn Error>> {
       OnExit(GameState::CharacterSelect),
       character_selection::on_exit,
     )
-    // begin game
+    // character create
+    .add_systems(
+      OnEnter(GameState::CharacterCreate),
+      character_creation::on_enter,
+    )
+    .add_systems(
+      Update,
+      character_creation::on_update.run_if(in_state(GameState::CharacterCreate)),
+    )
+    .add_systems(
+      OnExit(GameState::CharacterCreate),
+      character_creation::on_exit,
+    )
+    // initialize game
     .add_systems(OnEnter(GameState::StartGame), StartGameEvent::handle)
     .add_systems(
       Update,
-      game::save_data_receiver
-        .pipe(game::spawn_player)
-        .run_if(in_state(GameState::StartGame)),
+      SaveDataLoadedEvent::handle.run_if(in_state(GameState::StartGame)),
+    )
+    // play game
+    .add_systems(
+      Update,
+      (game::player_movement_system, game::focus_camera_system)
+        .chain()
+        .run_if(in_state(GameState::Gameplay)),
     )
     // settings
     .add_systems(OnEnter(GameState::SettingsMenu), settings_menu::on_enter)

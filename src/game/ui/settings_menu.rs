@@ -83,14 +83,6 @@ pub fn on_update(
   mut save_settings_event_writer: EventWriter<SaveSettingsEvent>,
 ) {
   egui::CentralPanel::default().show(contexts.ctx_mut(), |ui| {
-    ui.vertical_centered(|ui| {
-      egui::Frame::default().show(ui, |ui| {
-        ui.label("left");
-      });
-      egui::Frame::default().show(ui, |ui| {
-        ui.label("right");
-      });
-    });
     ui.heading("Settings");
 
     for (key, value) in settings_menu.menu_map.iter_mut() {

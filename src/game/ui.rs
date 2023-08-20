@@ -1,3 +1,4 @@
+pub mod character_creation;
 pub mod character_selection;
 pub mod main_menu;
 pub mod settings_menu;
@@ -34,11 +35,6 @@ impl WindowEvent {
       }
     }
   }
-}
-
-#[derive(Default, Resource)]
-pub struct FocusedEntity {
-  pub handle: Option<Entity>,
 }
 
 // main game ui
