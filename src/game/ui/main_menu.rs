@@ -29,7 +29,7 @@ enum MainMenuButtonType {
   Exit,
 }
 
-pub fn on_enter(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn on_enter(mut commands: Commands, _asset_server: Res<AssetServer>) {
   let handle = commands
     .spawn(NodeBundle {
       style: Style {

@@ -5,7 +5,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_egui::{
-  egui::{self, Align2, Color32, Frame, Ui},
+  egui::{self, Color32, Frame, Ui},
   EguiContexts,
 };
 use phf::{phf_map, Map};

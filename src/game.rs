@@ -1,6 +1,11 @@
 pub mod ui;
 
-use bevy::{app::AppExit, prelude::*, tasks::Task};
+use bevy::{
+  app::AppExit,
+  input::mouse::{MouseMotion, MouseWheel},
+  prelude::*,
+  tasks::Task,
+};
 
 use crate::{
   fatal_error,
@@ -231,21 +236,21 @@ pub fn player_movement_system(
 
 pub fn focus_camera_system(
   time: Res<Time>,
+  mut scroll_wheel: EventReader<MouseWheel>,
   mut query: ParamSet<(
     Query<&mut Transform, With<Camera3d>>,
     Query<(&Transform, &Attributes), With<PlayerCharacter>>,
   )>,
 ) {
   let player_query = query.p1();
-  let char_pos = {
-    let player_transform = player_query.single().0;
-    Vec2::new(
-      player_transform.translation.x,
-      player_transform.translation.y,
-    )
+  let (player_translate, char_pos) = {
+    let player_translate = player_query.single().0.translation;
+    let char_pos = Vec2::new(player_translate.x, player_translate.y);
+    (player_translate, char_pos)
   };
 
   let move_speed = {
+    let player_query = query.p1();
     let player_attributes = player_query.single().1;
     player_attributes.move_speed()
   };
@@ -255,21 +260,35 @@ pub fn focus_camera_system(
 
   let cam_pos = Vec2::new(cam_transform.translation.x, cam_transform.translation.y);
   let dist = cam_pos.distance(char_pos);
-  if dist > 0.0 {
+
+  const ZPOS_SCALAR: f32 = 10.0; // TODO arbitrary
+
+  let z_pos = cam_transform.translation.z
+    - (scroll_wheel
+      .iter()
+      .map(|e| e.y)
+      .reduce(|c, n| c + n)
+      .unwrap_or_default()
+      * cam_transform.translation.distance(player_translate)
+      / ZPOS_SCALAR);
+
+  let old_coords = Vec2::new(cam_transform.translation.x, cam_transform.translation.y);
+
+  let new_coords = if dist > 0.0 {
     const MAX_DIST: f32 = 256.0; // TODO arbitrary, figure out how to calculate dynamically (if needed?)
     let direction = (char_pos - cam_pos).normalize();
     let modifier = move_speed * time.delta().as_millis() as f32;
     let direction = direction * modifier * f32::min(dist, MAX_DIST) / MAX_DIST;
-    let old_coords = Vec2::new(cam_transform.translation.x, cam_transform.translation.y);
     let mut new_coords = old_coords + direction;
-    let z_pos = cam_transform.translation.z;
 
     let bounds = Rect::new(old_coords.x, old_coords.y, new_coords.x, new_coords.y);
     if bounds.contains(char_pos) {
       new_coords = char_pos;
     }
-
-    cam_transform.translation = Vec3::new(new_coords.x, new_coords.y, z_pos);
-    cam_transform.look_at(Vec3::new(new_coords.x, new_coords.y, 0.0), Vec3::Y);
-  }
+    new_coords
+  } else {
+    old_coords
+  };
+  cam_transform.translation = Vec3::new(new_coords.x, new_coords.y, z_pos);
+  cam_transform.look_at(Vec3::new(new_coords.x, new_coords.y, 0.0), Vec3::Y);
 }

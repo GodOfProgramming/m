@@ -60,8 +60,8 @@ pub fn on_enter(
 }
 
 pub fn on_update(
-  playground: Res<UiPlayground>,
-  interaction_query: Query<
+  _playground: Res<UiPlayground>,
+  _interaction_query: Query<
     (&Interaction, &UiPlaygroundButton),
     (Changed<Interaction>, With<Button>),
   >,
