@@ -5,6 +5,7 @@ use bevy::{
   input::mouse::{MouseMotion, MouseWheel},
   prelude::*,
   tasks::Task,
+  window::CursorGrabMode,
 };
 
 use crate::{
@@ -17,6 +18,8 @@ use crate::{
 
 const PLAYER_SIZE: f32 = 100.0;
 const DEADZONE: f32 = 0.15;
+const MOUSE_SENSITIVITY: f32 = 0.1;
+const UP: Vec3 = Vec3::Z;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
 pub enum GameState {
@@ -120,11 +123,19 @@ impl SaveDataLoadedEvent {
       }
       sys_info.current_camera = Some(
         commands
-          .spawn(Camera3dBundle {
-            transform: Transform::from_xyz(0.0, 0.0, PLAYER_SIZE * 5.0)
-              .looking_at(Vec3::ZERO, Vec3::Y),
-            ..default()
-          })
+          .spawn((
+            Camera3dBundle {
+              transform: Transform::from_xyz(0.0, 0.0, PLAYER_SIZE * 5.0)
+                .looking_at(Vec3::ZERO, UP),
+              ..default()
+            },
+            Front::default(),
+            EulerAngles {
+              yaw: 90.0,
+              pitch: 0.0,
+              roll: 0.0,
+            },
+          ))
           .id(),
       );
       commands.spawn((
@@ -142,6 +153,11 @@ impl SaveDataLoadedEvent {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
         material: materials.add(Color::RED.into()),
         transform: Transform::from_rotation(Quat::from_axis_angle(Vec3::X, 90.0_f32.to_radians())),
+        ..default()
+      });
+      commands.spawn(PbrBundle {
+        mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
+        material: materials.add(Color::RED.into()),
         ..default()
       });
       next_state.set(GameState::Gameplay);
@@ -180,6 +196,17 @@ pub struct Attributes {
   mind: u32,
 }
 
+#[derive(Component)]
+pub struct Front {
+  direction: Vec3,
+}
+
+impl Default for Front {
+  fn default() -> Self {
+    Self { direction: Vec3::Z }
+  }
+}
+
 impl Attributes {
   fn move_speed(&self) -> f32 {
     self.agility as f32
@@ -201,7 +228,13 @@ impl From<SavedAttributes> for Attributes {
   }
 }
 
-pub fn player_movement_system(
+pub fn gameplay_startup(mut windows: Query<&mut Window>) {
+  let mut window = windows.single_mut();
+  window.cursor.grab_mode = CursorGrabMode::Locked;
+  window.cursor.visible = false;
+}
+
+pub fn player_top_down_movement_system(
   keyboard_input: Res<Input<KeyCode>>,
   gamepads: Res<Gamepads>,
   gamepad_input: Res<Axis<GamepadAxis>>,
@@ -261,7 +294,70 @@ pub fn player_movement_system(
   }
 }
 
-pub fn focus_camera_system(
+pub fn player_first_person_movement_system(
+  keyboard_input: Res<Input<KeyCode>>,
+  gamepads: Res<Gamepads>,
+  gamepad_input: Res<Axis<GamepadAxis>>,
+  time: Res<Time>,
+  mut query: ParamSet<(
+    Query<(&mut Transform, &Attributes), With<PlayerCharacter>>,
+    Query<&Front, With<Camera3d>>,
+  )>,
+) {
+  let front = query.p1().single().direction;
+  let mut player_query = query.p0();
+  let move_speed = player_query.single().1.move_speed();
+  let mut transform = player_query.single_mut().0;
+
+  let mut movement = Vec3::default();
+
+  let mut moved = false;
+  if keyboard_input.pressed(KeyCode::W) {
+    movement += front;
+    moved = true;
+  } else if keyboard_input.pressed(KeyCode::S) {
+    movement -= front;
+    moved = true;
+  }
+
+  if keyboard_input.pressed(KeyCode::A) {
+    movement -= front.cross(UP);
+    moved = true;
+  } else if keyboard_input.pressed(KeyCode::D) {
+    movement += front.cross(UP);
+    moved = true;
+  }
+
+  for gamepad in gamepads.iter() {
+    let (x, y) = (
+      gamepad_input
+        .get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickX))
+        .unwrap_or_default(),
+      gamepad_input
+        .get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickY))
+        .unwrap_or_default(),
+    );
+
+    if x.abs() > DEADZONE {
+      movement += front.cross(UP) * x;
+      moved = true;
+    }
+
+    if y.abs() > DEADZONE {
+      movement += front * y;
+      moved = true;
+    }
+
+    break;
+  }
+
+  if moved {
+    let movement = movement.normalize() * move_speed * time.delta().as_millis() as f32;
+    transform.translation += movement;
+  }
+}
+
+pub fn focus_top_down_camera_system(
   time: Res<Time>,
   mut scroll_wheel: EventReader<MouseWheel>,
   gamepads: Res<Gamepads>,
@@ -328,6 +424,89 @@ pub fn focus_camera_system(
   } else {
     old_coords
   };
-  cam_transform.translation = Vec3::new(new_coords.x, new_coords.y, z_pos);
-  cam_transform.look_at(Vec3::new(new_coords.x, new_coords.y, 0.0), Vec3::Y);
+  cam_transform.translation = Vec3::new(new_coords.x, new_coords.y - 20.0, z_pos);
+  cam_transform.look_at(player_translate, UP);
+}
+
+#[derive(Default, Component)]
+pub struct EulerAngles {
+  yaw: f32,
+  pitch: f32,
+  #[allow(unused)]
+  roll: f32,
+}
+
+pub fn focus_first_person_camera_system(
+  mut mouse_motion: EventReader<MouseMotion>,
+  gamepads: Res<Gamepads>,
+  gamepad_input: Res<Axis<GamepadAxis>>,
+  mut query: ParamSet<(
+    Query<&mut Transform, With<Camera3d>>,
+    Query<&mut EulerAngles, With<Camera3d>>,
+    Query<&mut Front, With<Camera3d>>,
+    Query<&Transform, With<PlayerCharacter>>,
+  )>,
+) {
+  let player_pos = query.p3().single().translation;
+
+  let (mouse_x, mouse_y) = mouse_motion
+    .iter()
+    .map(|motion| motion.delta)
+    .reduce(|c, n| c + n)
+    .map(|offsets| (offsets.x * MOUSE_SENSITIVITY, offsets.y * MOUSE_SENSITIVITY))
+    .unwrap_or_default();
+
+  let (gamepad_x, gamepad_y) = gamepads
+    .iter()
+    .next()
+    .map(|gp| {
+      (
+        gamepad_input
+          .get(GamepadAxis::new(gp, GamepadAxisType::RightStickX))
+          .unwrap_or_default(),
+        gamepad_input
+          .get(GamepadAxis::new(gp, GamepadAxisType::RightStickY))
+          .unwrap_or_default(),
+      )
+    })
+    .map(|(x, y)| {
+      (
+        if x.abs() > DEADZONE { x } else { 0.0 },
+        if y.abs() > DEADZONE { y } else { 0.0 },
+      )
+    })
+    .unwrap_or_default();
+
+  let (yaw_rad, pitch_rad) = {
+    // set cam rotation
+    let mut cam_euler_query = query.p1();
+    let mut cam_angles = cam_euler_query.single_mut();
+    cam_angles.yaw += mouse_x + gamepad_x;
+    cam_angles.pitch += mouse_y + gamepad_y;
+
+    cam_angles.pitch = cam_angles.pitch.clamp(-89.0, 89.0);
+    (cam_angles.yaw.to_radians(), cam_angles.pitch.to_radians())
+  };
+
+  let yaw_sin = yaw_rad.sin();
+  let pitch_sin = pitch_rad.sin();
+
+  let yaw_cos = yaw_rad.cos();
+  let pitch_cos = pitch_rad.cos();
+
+  let direction = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
+
+  // set cam front
+  let mut cam_front_query = query.p2();
+  let mut front = cam_front_query.single_mut();
+  front.direction = direction;
+
+  // set cam position
+  let mut cam_transform_query = query.p0();
+  let mut cam_transform = cam_transform_query.single_mut();
+  cam_transform.translation = player_pos;
+
+  // set cam look
+  let focus = cam_transform.translation + direction;
+  cam_transform.look_at(focus, UP);
 }
