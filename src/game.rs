@@ -441,13 +441,14 @@ pub fn focus_first_person_camera_system(
   gamepads: Res<Gamepads>,
   gamepad_input: Res<Axis<GamepadAxis>>,
   mut query: ParamSet<(
-    Query<&mut Transform, With<Camera3d>>,
-    Query<&mut EulerAngles, With<Camera3d>>,
-    Query<&mut Front, With<Camera3d>>,
+    Query<(&mut Transform, &mut Front, &mut EulerAngles), With<Camera3d>>,
     Query<&Transform, With<PlayerCharacter>>,
   )>,
 ) {
-  let player_pos = query.p3().single().translation;
+  let player_pos = query.p1().single().translation;
+
+  let mut cam_query = query.p0();
+  let cam_query = cam_query.single_mut();
 
   let (mouse_x, mouse_y) = mouse_motion
     .iter()
@@ -479,16 +480,18 @@ pub fn focus_first_person_camera_system(
 
   let (yaw_rad, pitch_rad) = {
     // set cam rotation
-    let mut cam_euler_query = query.p1();
-    let mut cam_angles = cam_euler_query.single_mut();
+    let mut euler_angles = cam_query.2;
 
-    cam_angles.yaw -= mouse_x + gamepad_x;
-    cam_angles.pitch -= mouse_y + gamepad_y;
+    euler_angles.yaw -= mouse_x + gamepad_x;
+    euler_angles.pitch -= mouse_y - gamepad_y;
 
-    cam_angles.yaw %= 360.0;
+    euler_angles.yaw %= 360.0;
 
-    cam_angles.pitch = cam_angles.pitch.clamp(-89.0, 89.0);
-    (cam_angles.yaw.to_radians(), cam_angles.pitch.to_radians())
+    euler_angles.pitch = euler_angles.pitch.clamp(-89.0, 89.0);
+    (
+      euler_angles.yaw.to_radians(),
+      euler_angles.pitch.to_radians(),
+    )
   };
 
   let yaw_sin = yaw_rad.sin();
@@ -500,13 +503,11 @@ pub fn focus_first_person_camera_system(
   let direction = Vec3::new(pitch_cos * yaw_cos, pitch_cos * yaw_sin, pitch_sin).normalize();
 
   // set cam front
-  let mut cam_front_query = query.p2();
-  let mut front = cam_front_query.single_mut();
+  let mut front = cam_query.1;
   front.direction = direction;
 
   // set cam position
-  let mut cam_transform_query = query.p0();
-  let mut cam_transform = cam_transform_query.single_mut();
+  let mut cam_transform = cam_query.0;
   cam_transform.translation = player_pos;
 
   // set cam look
