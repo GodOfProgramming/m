@@ -424,7 +424,7 @@ pub fn focus_top_down_camera_system(
   } else {
     old_coords
   };
-  cam_transform.translation = Vec3::new(new_coords.x, new_coords.y - 20.0, z_pos);
+  cam_transform.translation = Vec3::new(new_coords.x, new_coords.y, z_pos);
   cam_transform.look_at(player_translate, UP);
 }
 
@@ -481,8 +481,11 @@ pub fn focus_first_person_camera_system(
     // set cam rotation
     let mut cam_euler_query = query.p1();
     let mut cam_angles = cam_euler_query.single_mut();
-    cam_angles.yaw += mouse_x + gamepad_x;
-    cam_angles.pitch += mouse_y + gamepad_y;
+
+    cam_angles.yaw -= mouse_x + gamepad_x;
+    cam_angles.pitch -= mouse_y + gamepad_y;
+
+    cam_angles.yaw %= 360.0;
 
     cam_angles.pitch = cam_angles.pitch.clamp(-89.0, 89.0);
     (cam_angles.yaw.to_radians(), cam_angles.pitch.to_radians())
@@ -494,7 +497,7 @@ pub fn focus_first_person_camera_system(
   let yaw_cos = yaw_rad.cos();
   let pitch_cos = pitch_rad.cos();
 
-  let direction = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
+  let direction = Vec3::new(pitch_cos * yaw_cos, pitch_cos * yaw_sin, pitch_sin).normalize();
 
   // set cam front
   let mut cam_front_query = query.p2();
