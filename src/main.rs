@@ -119,18 +119,14 @@ fn main() -> Result<(), Box<dyn Error>> {
       SaveDataLoadedEvent::handle.run_if(in_state(GameState::StartGame)),
     )
     // play game
-    .add_systems(OnEnter(GameState::Gameplay), game::gameplay_startup)
+    .add_systems(OnEnter(GameState::Gameplay), game::on_enter)
     .add_systems(
       Update,
-      (
-        // game::player_top_down_movement_system,
-        // game::focus_top_down_camera_system,
-        game::player_first_person_movement_system,
-        game::focus_first_person_camera_system,
-      )
+      (game::player_movement_system, game::focus_camera_system)
         .chain()
         .run_if(in_state(GameState::Gameplay)),
     )
+    .add_systems(OnExit(GameState::Gameplay), game::on_exit)
     // settings
     .add_systems(OnEnter(GameState::SettingsMenu), settings_menu::on_enter)
     .add_systems(
