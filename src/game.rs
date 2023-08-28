@@ -21,10 +21,20 @@ const DEADZONE: f32 = 0.15;
 const MOUSE_SENSITIVITY: f32 = 0.1;
 const UP: Vec3 = Vec3::Z;
 
-#[derive(Resource)]
-pub struct GameInfo {
-  compute_front: fn(Vec3) -> Vec3, // current front -> new front
-  focus_camera: fn(Vec3, Vec3) -> (Vec3, Vec3), // player pos, direction -> cam pos, cam focus
+#[derive(Default, Component, Clone, Copy)]
+pub enum CameraViewpoint {
+  #[default]
+  FirstPerson,
+  ThirdPerson,
+}
+
+impl CameraViewpoint {
+  fn swap(&mut self) {
+    *self = match self {
+      Self::FirstPerson => Self::ThirdPerson,
+      Self::ThirdPerson => Self::FirstPerson,
+    };
+  }
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
@@ -63,11 +73,6 @@ pub fn global_input_handler(
   if kbd.just_pressed(KeyCode::Escape) {
     exit.send(AppExit);
   }
-}
-
-#[derive(Component)]
-pub struct LoadPlayer {
-  task: Task<SaveData>,
 }
 
 #[derive(Event)]
@@ -127,6 +132,7 @@ impl SaveDataLoadedEvent {
       if let Some(entity) = sys_info.current_camera {
         commands.entity(entity).despawn();
       }
+
       sys_info.current_camera = Some(
         commands
           .spawn((
@@ -144,10 +150,12 @@ impl SaveDataLoadedEvent {
           ))
           .id(),
       );
+
       commands.spawn((
         PlayerCharacter,
         Name(save_data.name.clone()),
         Attributes::from(save_data.attributes.clone()),
+        CameraViewpoint::FirstPerson,
         PbrBundle {
           mesh: meshes.add(shape::Cube::new(PLAYER_SIZE).into()),
           material: materials.add(Color::PURPLE.into()),
@@ -155,15 +163,17 @@ impl SaveDataLoadedEvent {
           ..default()
         },
       ));
+
       commands.spawn(PbrBundle {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
         material: materials.add(Color::RED.into()),
         transform: Transform::from_rotation(Quat::from_axis_angle(Vec3::X, 90.0_f32.to_radians())),
         ..default()
       });
+
       commands.spawn(PbrBundle {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
-        material: materials.add(Color::RED.into()),
+        material: materials.add(Color::BLUE.into()),
         ..default()
       });
       next_state.set(GameState::Gameplay);
@@ -238,23 +248,9 @@ pub fn on_enter(mut commands: Commands, mut windows: Query<&mut Window>) {
   let mut window = windows.single_mut();
   window.cursor.grab_mode = CursorGrabMode::Locked;
   window.cursor.visible = false;
-  commands.insert_resource(GameInfo {
-    compute_front: player_first_person_front,
-    focus_camera: cam_first_person_target_fn,
-  });
 }
 
-pub fn on_exit(mut commands: Commands) {
-  commands.remove_resource::<GameInfo>();
-}
-
-pub fn player_first_person_front(front: Vec3) -> Vec3 {
-  front
-}
-
-pub fn player_third_person_front(front: Vec3) -> Vec3 {
-  Vec3::new(front.x, front.y, 0.0).normalize()
-}
+pub fn on_exit(mut commands: Commands) {}
 
 pub fn player_movement_system(
   keyboard_input: Res<Input<KeyCode>>,
@@ -262,9 +258,8 @@ pub fn player_movement_system(
   gamepad_buttons: Res<Input<GamepadButton>>,
   gamepad_axis: Res<Axis<GamepadAxis>>,
   time: Res<Time>,
-  mut game_info: ResMut<GameInfo>,
   mut query: ParamSet<(
-    Query<(&mut Transform, &Attributes), With<PlayerCharacter>>,
+    Query<(&mut Transform, &Attributes, &mut CameraViewpoint), With<PlayerCharacter>>,
     Query<&Front, With<Camera3d>>,
   )>,
 ) {
@@ -276,23 +271,20 @@ pub fn player_movement_system(
       .next()
       .map(|gp| gamepad_buttons.just_pressed(GamepadButton::new(gp, GamepadButtonType::Select)))
       .unwrap_or_default();
-  if should_swap_cam {
-    game_info.compute_front = if game_info.compute_front == player_first_person_front {
-      player_third_person_front
-    } else {
-      player_first_person_front
-    };
 
-    game_info.focus_camera = if game_info.focus_camera == cam_first_person_target_fn {
-      cam_third_person_target_fn
-    } else {
-      cam_first_person_target_fn
-    };
+  let mut player_query = query.p0();
+
+  let mut cam_view = player_query.single_mut().2;
+  if should_swap_cam {
+    cam_view.swap();
   }
 
   let front = query.p1().single().direction;
-  let front = (game_info.compute_front)(front);
-  let mut player_query = query.p0();
+  let front = match *cam_view {
+    CameraViewpoint::FirstPerson => front, // do same as third person when flying is not desired
+    CameraViewpoint::ThirdPerson => Vec3::new(front.x, front.y, 0.0).normalize(),
+  };
+
   let move_speed = player_query.single().1.move_speed();
   let mut transform = player_query.single_mut().0;
 
@@ -352,25 +344,25 @@ pub struct EulerAngles {
   roll: f32,
 }
 
-pub fn cam_first_person_target_fn(player_pos: Vec3, direction: Vec3) -> (Vec3, Vec3) {
-  (player_pos, player_pos + direction)
-}
-
-pub fn cam_third_person_target_fn(player_pos: Vec3, direction: Vec3) -> (Vec3, Vec3) {
-  (player_pos - (direction * PLAYER_SIZE * 5.0), player_pos)
-}
-
 pub fn focus_camera_system(
   mut mouse_motion: EventReader<MouseMotion>,
   gamepads: Res<Gamepads>,
   gamepad_input: Res<Axis<GamepadAxis>>,
-  game_info: Res<GameInfo>,
   mut query: ParamSet<(
     Query<(&mut Transform, &mut Front, &mut EulerAngles), With<Camera3d>>,
-    Query<&Transform, With<PlayerCharacter>>,
+    Query<(&Transform, &CameraViewpoint), With<PlayerCharacter>>,
   )>,
 ) {
-  let player_pos = query.p1().single().translation;
+  let player_query = query.p1();
+  let player_query = player_query.single();
+  let player_pos = player_query.0.translation;
+  let player_view = player_query.1;
+
+  let (player_pos, player_view) = {
+    let player_query = query.p1();
+    let player_query = player_query.single();
+    (player_query.0.translation, player_query.1.clone())
+  };
 
   let mut cam_query = query.p0();
   let cam_query = cam_query.single_mut();
@@ -432,7 +424,12 @@ pub fn focus_camera_system(
   front.direction = direction;
 
   let mut cam_transform = cam_query.0;
-  let (cam_pos, cam_focus) = (game_info.focus_camera)(player_pos, direction);
+  let (cam_pos, cam_focus) = match player_view {
+    CameraViewpoint::FirstPerson => (player_pos, player_pos + direction),
+    CameraViewpoint::ThirdPerson => (player_pos - (direction * PLAYER_SIZE * 5.0), player_pos),
+  };
+
+  // (game_info.focus_camera)(player_pos, direction);
 
   // set cam position
   cam_transform.translation = cam_pos;
