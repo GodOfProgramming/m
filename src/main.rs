@@ -1,4 +1,5 @@
 mod game;
+mod render;
 mod storage;
 
 use bevy::{
@@ -22,7 +23,7 @@ use storage::{Settings, SystemInformation};
 
 use crate::game::{
   ui::{character_creation, character_selection},
-  SaveDataLoadedEvent, StartGameEvent,
+  FireBallMaterial, SaveDataLoadedEvent, StartGameEvent,
 };
 
 const GAME_NAME: &'static str = "M";
@@ -70,6 +71,8 @@ fn main() -> Result<(), Box<dyn Error>> {
           ..default()
         }),
       EguiPlugin,
+      MaterialPlugin::<FireBallMaterial>::default(),
+      render::ShaderUtils,
     ))
     .add_state::<GameState>()
     .add_event::<WindowEvent>()

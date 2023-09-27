@@ -2,9 +2,11 @@ pub mod ui;
 
 use bevy::{
   app::AppExit,
-  input::mouse::{MouseMotion, MouseWheel},
+  input::mouse::MouseMotion,
   prelude::*,
-  tasks::Task,
+  reflect::{TypePath, TypeUuid},
+  render::render_resource::{AsBindGroup, ShaderRef},
+  utils::Uuid,
   window::CursorGrabMode,
 };
 
@@ -125,8 +127,11 @@ impl SaveDataLoadedEvent {
     mut event_reader: EventReader<Self>,
     mut next_state: ResMut<NextState<GameState>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut std_materials: ResMut<Assets<StandardMaterial>>,
+    mut fire_materials: ResMut<Assets<FireBallMaterial>>,
+    mut windows: Query<&mut Window>,
   ) {
+    let mut window = windows.single();
     for event in event_reader.iter() {
       let save_data = event.data();
       if let Some(entity) = sys_info.current_camera {
@@ -158,7 +163,7 @@ impl SaveDataLoadedEvent {
         CameraViewpoint::FirstPerson,
         PbrBundle {
           mesh: meshes.add(shape::Cube::new(PLAYER_SIZE).into()),
-          material: materials.add(Color::PURPLE.into()),
+          material: std_materials.add(Color::PURPLE.into()),
           transform: Transform::from_translation(Vec3::new(0.0, 0.0, PLAYER_SIZE / 2.0)),
           ..default()
         },
@@ -166,14 +171,23 @@ impl SaveDataLoadedEvent {
 
       commands.spawn(PbrBundle {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
-        material: materials.add(Color::RED.into()),
+        material: std_materials.add(Color::RED.into()),
         transform: Transform::from_rotation(Quat::from_axis_angle(Vec3::X, 90.0_f32.to_radians())),
         ..default()
       });
 
       commands.spawn(PbrBundle {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
-        material: materials.add(Color::BLUE.into()),
+        material: std_materials.add(Color::BLUE.into()),
+        ..default()
+      });
+
+      commands.spawn(MaterialMeshBundle {
+        mesh: meshes.add(shape::Circle::new(PLAYER_SIZE * 3.0).into()),
+        transform: Transform::from_xyz(10.0, 0.0, 0.0),
+        material: fire_materials.add(FireBallMaterial {
+          resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
+        }),
         ..default()
       });
       next_state.set(GameState::Gameplay);
@@ -272,6 +286,7 @@ pub fn player_movement_system(
       .map(|gp| gamepad_buttons.just_pressed(GamepadButton::new(gp, GamepadButtonType::Select)))
       .unwrap_or_default();
 
+  let front = query.p1().single().direction;
   let mut player_query = query.p0();
 
   let mut cam_view = player_query.single_mut().2;
@@ -279,7 +294,6 @@ pub fn player_movement_system(
     cam_view.swap();
   }
 
-  let front = query.p1().single().direction;
   let front = match *cam_view {
     CameraViewpoint::FirstPerson => front, // do same as third person when flying is not desired
     CameraViewpoint::ThirdPerson => Vec3::new(front.x, front.y, 0.0).normalize(),
@@ -353,11 +367,6 @@ pub fn focus_camera_system(
     Query<(&Transform, &CameraViewpoint), With<PlayerCharacter>>,
   )>,
 ) {
-  let player_query = query.p1();
-  let player_query = player_query.single();
-  let player_pos = player_query.0.translation;
-  let player_view = player_query.1;
-
   let (player_pos, player_view) = {
     let player_query = query.p1();
     let player_query = player_query.single();
@@ -429,11 +438,22 @@ pub fn focus_camera_system(
     CameraViewpoint::ThirdPerson => (player_pos - (direction * PLAYER_SIZE * 5.0), player_pos),
   };
 
-  // (game_info.focus_camera)(player_pos, direction);
-
   // set cam position
   cam_transform.translation = cam_pos;
 
   // set cam look
   cam_transform.look_at(cam_focus, UP);
+}
+
+#[derive(AsBindGroup, TypePath, TypeUuid, Debug, Clone)]
+#[uuid = "23193bc4-58b5-465a-a9c4-247bea2e21fe"]
+pub struct FireBallMaterial {
+  #[uniform(0)]
+  resolution: Vec2,
+}
+
+impl Material for FireBallMaterial {
+  fn fragment_shader() -> ShaderRef {
+    "shaders/fire.wgsl".into()
+  }
 }
