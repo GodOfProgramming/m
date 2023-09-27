@@ -125,7 +125,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     .add_systems(OnEnter(GameState::Gameplay), game::on_enter)
     .add_systems(
       Update,
-      (game::player_movement_system, game::focus_camera_system)
+      (
+        game::player_movement_system,
+        game::focus_camera_system,
+        game::fireball_system,
+      )
         .chain()
         .run_if(in_state(GameState::Gameplay)),
     )

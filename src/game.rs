@@ -1,5 +1,7 @@
 pub mod ui;
 
+use std::f32::consts::PI;
+
 use bevy::{
   app::AppExit,
   input::mouse::MouseMotion,
@@ -129,9 +131,9 @@ impl SaveDataLoadedEvent {
     mut meshes: ResMut<Assets<Mesh>>,
     mut std_materials: ResMut<Assets<StandardMaterial>>,
     mut fire_materials: ResMut<Assets<FireBallMaterial>>,
-    mut windows: Query<&mut Window>,
+    windows: Query<&mut Window>,
   ) {
-    let mut window = windows.single();
+    let window = windows.single();
     for event in event_reader.iter() {
       let save_data = event.data();
       if let Some(entity) = sys_info.current_camera {
@@ -161,9 +163,12 @@ impl SaveDataLoadedEvent {
         Name(save_data.name.clone()),
         Attributes::from(save_data.attributes.clone()),
         CameraViewpoint::FirstPerson,
-        PbrBundle {
-          mesh: meshes.add(shape::Cube::new(PLAYER_SIZE).into()),
-          material: std_materials.add(Color::PURPLE.into()),
+        MaterialMeshBundle {
+          mesh: meshes.add(shape::Circle::new(PLAYER_SIZE).into()),
+          // material: std_materials.add(Color::PURPLE.into()),
+          material: fire_materials.add(FireBallMaterial {
+            resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
+          }),
           transform: Transform::from_translation(Vec3::new(0.0, 0.0, PLAYER_SIZE / 2.0)),
           ..default()
         },
@@ -182,14 +187,17 @@ impl SaveDataLoadedEvent {
         ..default()
       });
 
-      commands.spawn(MaterialMeshBundle {
-        mesh: meshes.add(shape::Circle::new(PLAYER_SIZE * 3.0).into()),
-        transform: Transform::from_xyz(10.0, 0.0, 0.0),
-        material: fire_materials.add(FireBallMaterial {
-          resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
-        }),
-        ..default()
-      });
+      // commands.spawn((
+      //   FireBall,
+      //   MaterialMeshBundle {
+      //     mesh: meshes.add(shape::Circle::new(PLAYER_SIZE * 3.0).into()),
+      //     transform: Transform::from_xyz(0.0, 0.0, 0.0),
+      //     material: fire_materials.add(FireBallMaterial {
+      //       resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
+      //     }),
+      //     ..default()
+      //   },
+      // ));
       next_state.set(GameState::Gameplay);
       break;
     }
@@ -350,6 +358,26 @@ pub fn player_movement_system(
   }
 }
 
+pub fn fireball_system(
+  mut query: ParamSet<(
+    Query<&mut Transform, With<FireBall>>,
+    Query<&Transform, With<PlayerCharacter>>,
+    Query<&Transform, With<Camera3d>>,
+  )>,
+) {
+  let player_location = query.p1().single().translation;
+  let camera_location = query.p2().single().translation;
+
+  for mut fireball_transform in query.p0().iter_mut() {
+    fireball_transform.translation = player_location + Vec3::new(0.0, 0.0, PLAYER_SIZE * 2.0);
+    let fireball_location = fireball_transform.translation;
+    let direction = (fireball_location - camera_location).normalize();
+    let rotation_angle = UP.dot(direction).acos() + PI;
+    let rotation_axis = UP.cross(direction).normalize();
+    fireball_transform.rotate_axis(rotation_axis, rotation_angle);
+  }
+}
+
 #[derive(Default, Component)]
 pub struct EulerAngles {
   yaw: f32,
@@ -444,6 +472,9 @@ pub fn focus_camera_system(
   // set cam look
   cam_transform.look_at(cam_focus, UP);
 }
+
+#[derive(Component)]
+pub struct FireBall;
 
 #[derive(AsBindGroup, TypePath, TypeUuid, Debug, Clone)]
 #[uuid = "23193bc4-58b5-465a-a9c4-247bea2e21fe"]
