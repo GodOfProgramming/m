@@ -163,20 +163,19 @@ impl SaveDataLoadedEvent {
         Name(save_data.name.clone()),
         Attributes::from(save_data.attributes.clone()),
         CameraViewpoint::FirstPerson,
-        MaterialMeshBundle {
-          mesh: meshes.add(shape::Circle::new(PLAYER_SIZE).into()),
-          // material: std_materials.add(Color::PURPLE.into()),
-          material: fire_materials.add(FireBallMaterial {
-            resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
-          }),
+        PbrBundle {
+          mesh: meshes.add(shape::Cube::new(PLAYER_SIZE).into()),
+          material: std_materials.add(Color::PURPLE.into()),
           transform: Transform::from_translation(Vec3::new(0.0, 0.0, PLAYER_SIZE / 2.0)),
           ..default()
         },
       ));
 
-      commands.spawn(PbrBundle {
+      commands.spawn(MaterialMeshBundle {
         mesh: meshes.add(shape::Plane::from_size(PLAYER_SIZE * 5.0).into()),
-        material: std_materials.add(Color::RED.into()),
+        material: fire_materials.add(FireBallMaterial {
+          resolution: Vec2::new(window.resolution.width(), window.resolution.height()),
+        }),
         transform: Transform::from_rotation(Quat::from_axis_angle(Vec3::X, 90.0_f32.to_radians())),
         ..default()
       });

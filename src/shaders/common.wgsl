@@ -6,9 +6,10 @@ fn snoise(uv_in: vec3<f32>, res: f32) -> f32 {
   let uv = uv_in * res;
 
   let uv0 = floor(uv % res) * s;
-  let uv1 = floor(uv + vec3<f32>(1.0));
+  let uv1 = floor(uv + vec3<f32>(1.0) % res) * s;
 
-  var f: vec3<f32> = fract(uv); f = f * f * (3.0 - 2.0 * f);
+  var f: vec3<f32> = fract(uv);
+  f = f * f * (3.0 - 2.0 * f);
 
   let v = vec4<f32>(
     uv0.x + uv0.y + uv0.z,
