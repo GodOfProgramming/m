@@ -23,5 +23,5 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     color += (1.5 / power) * common::snoise(coord + vec3<f32>(0.0, -globals.time * 0.05, globals.time * 0.01), power * 16.0);
   }
 
-  return vec4<f32>(color, pow(max(color, 0.0), 2.0) * 0.4, pow(max(color, 0.0), 3.0) * 0.15, 1.0);
+  return vec4<f32>(color, pow(max(color, 0.0), 2.0) * 0.4, pow(max(color, 0.0), 3.0) * 0.15, 1.0) * vec4<f32>(abs(sin(globals.time)), abs(cos(globals.time)), abs(tan(globals.time)), 1.0);
 }
