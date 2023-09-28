@@ -16,7 +16,7 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
 
   var color: f32 = 3.0 - (3.0 * length(2.0 * p));
 
-  let coord = vec3(atan(p.y / p.x) / 6.2832 + 0.5, length(p) * 0.4, 0.5);
+  let coord = vec3<f32>(atan(p.y / p.x) / 6.2832 + 0.5, length(p) * 0.4, 0.5);
 
   for (var i: i32 = 1; i <= 7; i += 1) {
     let power = pow(2.0, f32(i));
